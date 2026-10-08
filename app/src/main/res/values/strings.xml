@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">n8n Mobile</string>
+    <string name="widget_desc">Quick access to n8n workflows</string>
 </resources>

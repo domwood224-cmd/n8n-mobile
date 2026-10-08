@@ -28,11 +28,16 @@ import com.napcity.n8nmobile.data.N8nWorkflow
 import com.napcity.n8nmobile.data.SettingsStore
 import com.napcity.n8nmobile.ui.N8nViewModel
 import com.napcity.n8nmobile.ui.theme.ThemeN8NMobile
+import com.napcity.n8nmobile.work.MonitorScheduler
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Request notification permission on Android 13+
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1001)
+        }
         setContent {
             ThemeN8NMobile {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -108,6 +113,7 @@ fun N8nApp() {
                         N8nClient.invalidate()
                         viewModel.configure(url, key)
                         viewModel.loadWorkflows()
+                        MonitorScheduler.start(context)
                         showSettings = false
                         selectedTab = 0
                     },
