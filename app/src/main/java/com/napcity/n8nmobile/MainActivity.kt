@@ -25,7 +25,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.napcity.n8nmobile.api.N8nClient
 import com.napcity.n8nmobile.data.N8nExecution
 import com.napcity.n8nmobile.data.N8nWorkflow
+import com.napcity.n8nmobile.data.N8nWorkflowDetail
 import com.napcity.n8nmobile.data.SettingsStore
+import com.napcity.n8nmobile.editor.EditorScreen
 import com.napcity.n8nmobile.ui.N8nViewModel
 import com.napcity.n8nmobile.ui.theme.ThemeN8NMobile
 import kotlinx.coroutines.launch
@@ -47,6 +49,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/** Tracks a visual-editor session: detail == null means creating a new workflow. */
+data class EditorSession(
+    val detail: N8nWorkflowDetail?,
+    val source: N8nWorkflow?,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun N8nApp() {
@@ -61,6 +69,8 @@ fun N8nApp() {
     var selectedExecution by remember { mutableStateOf<N8nExecution?>(null) }
     var selectedTab by remember { mutableStateOf(0) }
     var showDeleteConfirm by remember { mutableStateOf<N8nWorkflow?>(null) }
+    /** Non-null while the visual canvas editor is open. detail == null means a new workflow. */
+    var editorSession by remember { mutableStateOf<EditorSession?>(null) }
 
     val uiState by viewModel.uiState.collectAsState()
 
@@ -117,6 +127,14 @@ fun N8nApp() {
                     },
                     onCancel = { if (settings.isConfigured) showSettings = false }
                 )
+                editorSession != null -> EditorScreen(
+                    viewModel = viewModel,
+                    existingDetail = editorSession!!.detail,
+                    onBack = {
+                        editorSession = null
+                        viewModel.loadWorkflows()
+                    }
+                )
                 selectedExecution != null -> ExecutionDetailScreen(
                     execution = selectedExecution!!,
                     viewModel = viewModel,
@@ -138,40 +156,60 @@ fun N8nApp() {
                             // TODO: share via intent
                         }
                     },
+                    onEditCanvas = {
+                        uiState.selectedWorkflowDetail?.let { detail ->
+                            editorSession = EditorSession(
+                                detail = detail,
+                                source = selectedWorkflow
+                            )
+                        }
+                    },
                     onExecutionClick = { selectedExecution = it }
                 )
-                else -> Column {
-                    TabRow(selectedTabIndex = selectedTab) {
-                        Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) {
-                            Text("Workflows", modifier = Modifier.padding(12.dp))
+                else -> Box(modifier = Modifier.fillMaxSize()) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        TabRow(selectedTabIndex = selectedTab) {
+                            Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) {
+                                Text("Workflows", modifier = Modifier.padding(12.dp))
+                            }
+                            Tab(selected = selectedTab == 1, onClick = {
+                                selectedTab = 1
+                                viewModel.loadExecutions()
+                            }) {
+                                Text("Executions", modifier = Modifier.padding(12.dp))
+                            }
                         }
-                        Tab(selected = selectedTab == 1, onClick = {
-                            selectedTab = 1
-                            viewModel.loadExecutions()
-                        }) {
-                            Text("Executions", modifier = Modifier.padding(12.dp))
+                        if (selectedTab == 0) {
+                            WorkflowListScreen(
+                                uiState = uiState,
+                                viewModel = viewModel,
+                                onWorkflowClick = {
+                                    selectedWorkflow = it
+                                    viewModel.loadWorkflowDetail(it.id)
+                                    viewModel.loadExecutions(it.id)
+                                },
+                                onToggle = { viewModel.toggleWorkflow(it) },
+                                onTrigger = { viewModel.triggerWorkflow(it) }
+                            )
+                        } else {
+                            ExecutionsScreen(
+                                uiState = uiState,
+                                onExecutionClick = {
+                                    selectedExecution = it
+                                    viewModel.loadExecutionDetail(it.id)
+                                }
+                            )
                         }
                     }
                     if (selectedTab == 0) {
-                        WorkflowListScreen(
-                            uiState = uiState,
-                            viewModel = viewModel,
-                            onWorkflowClick = {
-                                selectedWorkflow = it
-                                viewModel.loadWorkflowDetail(it.id)
-                                viewModel.loadExecutions(it.id)
-                            },
-                            onToggle = { viewModel.toggleWorkflow(it) },
-                            onTrigger = { viewModel.triggerWorkflow(it) }
-                        )
-                    } else {
-                        ExecutionsScreen(
-                            uiState = uiState,
-                            onExecutionClick = {
-                                selectedExecution = it
-                                viewModel.loadExecutionDetail(it.id)
-                            }
-                        )
+                        FloatingActionButton(
+                            onClick = { editorSession = EditorSession(null, null) },
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(16.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "New workflow")
+                        }
                     }
                 }
             }
@@ -366,6 +404,7 @@ fun WorkflowDetailScreen(
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
     onExport: () -> Unit,
+    onEditCanvas: () -> Unit,
     onExecutionClick: (N8nExecution) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -379,6 +418,7 @@ fun WorkflowDetailScreen(
                 IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, "More") }
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                     DropdownMenuItem(text = { Text("Trigger now") }, onClick = { showMenu = false; onTrigger() }, leadingIcon = { Icon(Icons.Default.PlayArrow, null) })
+                    DropdownMenuItem(text = { Text("Edit in canvas") }, onClick = { showMenu = false; onEditCanvas() }, leadingIcon = { Icon(Icons.Default.Edit, null) })
                     DropdownMenuItem(text = { Text("Duplicate") }, onClick = { showMenu = false; onDuplicate() }, leadingIcon = { Icon(Icons.Default.ContentCopy, null) })
                     DropdownMenuItem(text = { Text("Export JSON") }, onClick = { showMenu = false; onExport() }, leadingIcon = { Icon(Icons.Default.Share, null) })
                     DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, onClick = { showMenu = false; onDelete() }, leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) })

@@ -7,6 +7,9 @@ import com.napcity.n8nmobile.data.N8nExecution
 import com.napcity.n8nmobile.data.N8nExecutionDetail
 import com.napcity.n8nmobile.data.N8nWorkflow
 import com.napcity.n8nmobile.data.N8nWorkflowDetail
+import com.napcity.n8nmobile.editor.EditorConnection
+import com.napcity.n8nmobile.editor.EditorNode
+import com.napcity.n8nmobile.editor.toN8nWorkflowPayload
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -271,5 +274,55 @@ class N8nViewModel : ViewModel() {
             selectedExecution = null,
             selectedWorkflowDetail = null
         )
+    }
+
+    // --- Visual canvas editor ---
+
+    /**
+     * Saves a canvas-built workflow. Creates a new workflow when [existingId]
+     * is null, otherwise PATCHes the existing one. Surfaces success/error
+     * through UiState; returns the workflow id on success.
+     */
+    suspend fun saveCanvasWorkflow(
+        name: String,
+        nodes: List<EditorNode>,
+        connections: List<EditorConnection>,
+        existingId: String?
+    ): Result<String> {
+        return try {
+            val api = N8nClient.getApi(baseUrl, apiKey)
+            val payload = toN8nWorkflowPayload(name, nodes, connections)
+            if (existingId == null) {
+                val response = api.createWorkflow(payload)
+                if (response.isSuccessful) {
+                    _uiState.value = _uiState.value.copy(
+                        successMessage = "Workflow \"$name\" created"
+                    )
+                    loadWorkflows()
+                    Result.success(response.body()?.id ?: "")
+                } else {
+                    val msg = "Save failed: ${response.code()}"
+                    _uiState.value = _uiState.value.copy(error = msg)
+                    Result.failure(Exception(msg))
+                }
+            } else {
+                val response = api.updateWorkflow(existingId, payload)
+                if (response.isSuccessful) {
+                    _uiState.value = _uiState.value.copy(
+                        successMessage = "Workflow \"$name\" saved"
+                    )
+                    loadWorkflows()
+                    Result.success(existingId)
+                } else {
+                    val msg = "Save failed: ${response.code()}"
+                    _uiState.value = _uiState.value.copy(error = msg)
+                    Result.failure(Exception(msg))
+                }
+            }
+        } catch (e: Exception) {
+            val msg = e.message ?: "Save failed"
+            _uiState.value = _uiState.value.copy(error = msg)
+            Result.failure(e)
+        }
     }
 }
