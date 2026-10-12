@@ -35,3 +35,13 @@ jobs:
         with:
           name: n8n-mobile-debug
           path: app/build/outputs/apk/debug/*.apk
+
+      - name: Stage APK to releases/
+        run: |
+          mkdir -p releases
+          cp app/build/outputs/apk/debug/app-debug.apk releases/n8n-mobile-v0.2.0-debug.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add releases/n8n-mobile-v0.2.0-debug.apk
+          git commit -m "Stage v0.2.0 APK for download" || echo "nothing to commit"
+          git push origin HEAD:main || echo "push failed"
